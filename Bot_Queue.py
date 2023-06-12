@@ -8,8 +8,8 @@ bot = Bot(token="5973966334:AAHjG4FY4yj__zJ0NxXLFkmSVem550Hb238")
 dp = Dispatcher(bot)
 
 status = 0
-current_subject = ''
-current_date = ''
+current_subject = None
+current_date = None
 
 class Date:
 
@@ -24,12 +24,8 @@ class Date:
         date_format = "%d.%m.%Y"
         date1 = datetime.datetime.strptime(date_str1, date_format).date()
         date2 = datetime.datetime.strptime(date_str2, date_format).date()
-
-        if date1 > date2:
-            return True
-        else:
-            return False
-
+        return date1 > date2
+    
 class QueueInDay:
 
     def __init__(self, DateToCheck):
@@ -45,9 +41,12 @@ class QueueInDay:
     def get_data(self):
         s = ''
         temp = self.queue.copy()
-        while (not self.isEmpty()):
-            s = s + self.queue.popleft() + '\n'
-        self.queue = temp
+        if self.isEmpty():
+            s = "Очередь пуста"
+        else:
+            while (not self.isEmpty()):
+                s = s + self.queue.popleft() + '\n'
+            self.queue = temp
         return s
 
     def delete_item(self, Name):
@@ -78,17 +77,22 @@ class Subject:
             for j in range(len(self.ListOfDate) - 1 - i):
                 if Date.compare(self.ListOfDate[j].DateOfQueue, self.ListOfDate[j+1].DateOfQueue):
                     self.ListOfDate[j], self.ListOfDate[j+1] = self.ListOfDate[j+1], self.ListOfDate[j]
-            
+     
 
 @dp.message_handler(commands="start")
 async def cmd_start(message: types.Message):
-    global status 
+    global status
     global current_subject
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for i in Subjects:
-        keyboard.add(types.KeyboardButton(i.Name))
-    await message.answer("Выберите предмет", reply_markup=keyboard)
-    status = 1
+    global current_date
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True) 
+    keyboard.add(types.KeyboardButton("Приступить к работе"))
+    keyboard.add(types.KeyboardButton("Что умеет бот?"))
+    await message.answer("Добрый день. Нажмите на кнопку, чтобы начать", reply_markup=keyboard)
+    status = 0
+    current_subject = None
+    current_date = None
+
+
 
 @dp.message_handler(commands="settings")
 async def add_info(message: types.Message): 
@@ -100,38 +104,70 @@ async def dialog(message: types.Message):
     global current_subject
     global current_date
     isfound = False
-    if status == 1:
-        for temp in Subjects:
-            if temp.Name == message.text:
-                current_subject = temp
-                isfound = True
-        if not isfound:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            for temp in Subjects:
-                keyboard.add(types.KeyboardButton(temp.Name))
-            await message.answer("Вас не понял, введите ещё раз", reply_markup=keyboard)
-        else:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            for temp in current_subject.ListOfDate:
-                keyboard.add(types.KeyboardButton(temp.DateOfQueue))
-            await message.answer("Выберите дату", reply_markup=keyboard)
-            status = 2
-    elif status == 2:
-        for temp in current_subject.ListOfDate:
-            if temp.DateOfQueue == message.text:
-                current_date = temp
-                isfound = True
-        if not isfound:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            for temp in current_subject.ListOfDate:
-                keyboard.add(types.KeyboardButton(temp.DateOfQueue))
-            await message.answer("Вас не понял, введите ещё раз", reply_markup=keyboard)
-        else:
-            keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-            keyboard.add(types.KeyboardButton("Просмотреть очередь"))
-            keyboard.add(types.KeyboardButton("Записаться в очередь"))
-            status = 3
-            await message.answer("Выберите, что хотите сделать", reply_markup=keyboard)
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True) 
+    if message.text == 'Выйти в главное меню':
+        await cmd_start(message)
+    elif (message.text == 'Вернуться назад') and (status > 0):
+        status -= 1
+    else:
+        if status == 0:
+            if message.text == 'Что умеет бот?':
+                keyboard.clean()
+                keyboard.add(types.KeyboardButton('Выйти в главное меню'))
+                await message.answer('Ну тут что то расписать надо жестко', reply_markup=keyboard)
+            elif message.text == 'Приступить к работе':
+                for i in Subjects:
+                    keyboard.add(types.KeyboardButton(i.Name))
+                await message.answer("Выберите предмет", reply_markup=keyboard)
+                status = 1
+            else:
+                await message.answer("Я вас не понял. Нажимайте на кнопки")    
+        elif status == 1:
+            if current_subject == None:
+                for temp in Subjects:
+                    if temp.Name == message.text:
+                        current_subject = temp
+                        isfound = True
+            if not (current_subject == None):
+                for temp in current_subject.ListOfDate:
+                    keyboard.add(types.KeyboardButton(temp.DateOfQueue))
+                keyboard.add(types.KeyboardButton("Выйти"))           
+                await message.answer("Выберите дату", reply_markup=keyboard)
+                current_date = None
+                status = 2
+            else:
+                await message.answer("Вас не понял. Нажимайте на кнопки", reply_markup=keyboard)
+        elif status == 2:
+            if current_date == None:
+                for temp in current_subject.ListOfDate:
+                    if temp.DateOfQueue == message.text:
+                        current_date = temp
+                        isfound = True
+            if not isfound:
+                    for temp in current_subject.ListOfDate:
+                        keyboard.add(types.KeyboardButton(temp.DateOfQueue))
+                    await message.answer("Вас не понял, введите ещё раз", reply_markup=keyboard)    
+            else:
+                keyboard.add(types.KeyboardButton("Просмотреть очередь"))
+                keyboard.add(types.KeyboardButton("Записаться в очередь"))
+                keyboard.add(types.KeyboardButton("Выйти"))
+                keyboard.add(types.KeyboardButton("Вернуться в главное меню"))
+                status = 3
+                await message.answer("Выберите, что хотите сделать", reply_markup=keyboard)
+        elif status == 3:
+            if message.text == "Просмотреть очередь":
+                keyboard.add(types.KeyboardButton("Выйти"))
+                await message.answer("Очередь на " + current_subject.Name + " " + current_date.DateOfQueue + ":")
+                await message.answer(current_date.get_data(), reply_markup=keyboard)
+                status = 2
+            elif message.text == "Записаться в очередь":
+                await message.answer("Ваша фамилия")
+    print("status = ", status, "    message.text = ", message.text)
+    if not (current_subject == None):
+        print("Предмет = ", current_subject.Name)
+    if not (current_date == None):
+        print("Дата = ", current_date.DateOfQueue)
+    print('\n')
 
             
 
