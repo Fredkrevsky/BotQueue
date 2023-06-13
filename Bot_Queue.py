@@ -103,23 +103,22 @@ async def dialog(message: types.Message):
     global status
     global current_subject
     global current_date
-    isfound = False
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True) 
     if message.text == 'Выйти в главное меню':
-        await cmd_start(message)
-    elif (message.text == 'Вернуться назад') and (status > 0):
-        status -= 1
+        await cmd_start(message)        
     else:
         if status == 0:
             if message.text == 'Что умеет бот?':
                 keyboard.clean()
-                keyboard.add(types.KeyboardButton('Выйти в главное меню'))
+                keyboard.add(types.KeyboardButton('Назад'))
                 await message.answer('Ну тут что то расписать надо жестко', reply_markup=keyboard)
             elif message.text == 'Приступить к работе':
                 for i in Subjects:
                     keyboard.add(types.KeyboardButton(i.Name))
                 await message.answer("Выберите предмет", reply_markup=keyboard)
                 status = 1
+            elif message.text == "Назад":
+                await cmd_start(message)
             else:
                 await message.answer("Я вас не понял. Нажимайте на кнопки")    
         elif status == 1:
@@ -127,11 +126,10 @@ async def dialog(message: types.Message):
                 for temp in Subjects:
                     if temp.Name == message.text:
                         current_subject = temp
-                        isfound = True
             if not (current_subject == None):
                 for temp in current_subject.ListOfDate:
                     keyboard.add(types.KeyboardButton(temp.DateOfQueue))
-                keyboard.add(types.KeyboardButton("Выйти"))           
+                keyboard.add(types.KeyboardButton("Выйти в главное меню"))           
                 await message.answer("Выберите дату", reply_markup=keyboard)
                 current_date = None
                 status = 2
@@ -142,26 +140,34 @@ async def dialog(message: types.Message):
                 for temp in current_subject.ListOfDate:
                     if temp.DateOfQueue == message.text:
                         current_date = temp
-                        isfound = True
-            if not isfound:
+            if current_date == None:
                     for temp in current_subject.ListOfDate:
                         keyboard.add(types.KeyboardButton(temp.DateOfQueue))
-                    await message.answer("Вас не понял, введите ещё раз", reply_markup=keyboard)    
+                    keyboard.add(types.KeyboardButton("Выйти в главное меню"))
+                    await message.answer("Вас не понял, нажимайте на кнопки", reply_markup=keyboard)    
             else:
                 keyboard.add(types.KeyboardButton("Просмотреть очередь"))
                 keyboard.add(types.KeyboardButton("Записаться в очередь"))
-                keyboard.add(types.KeyboardButton("Выйти"))
-                keyboard.add(types.KeyboardButton("Вернуться в главное меню"))
+                keyboard.add(types.KeyboardButton("Выйти в главное меню"))
                 status = 3
                 await message.answer("Выберите, что хотите сделать", reply_markup=keyboard)
         elif status == 3:
             if message.text == "Просмотреть очередь":
-                keyboard.add(types.KeyboardButton("Выйти"))
+                keyboard.add(types.KeyboardButton("Назад"))
                 await message.answer("Очередь на " + current_subject.Name + " " + current_date.DateOfQueue + ":")
                 await message.answer(current_date.get_data(), reply_markup=keyboard)
-                status = 2
             elif message.text == "Записаться в очередь":
                 await message.answer("Ваша фамилия")
+                status = 4
+            elif message.text == "Назад":
+                status = 2
+                await dialog(message)
+            else:
+                await message.answer("Вас не понял. Нажимайте на кнопки", reply_markup=keyboard)
+        elif status == 4:
+            current_date.add(message.text)
+            status = 2
+            await dialog(message)
     print("status = ", status, "    message.text = ", message.text)
     if not (current_subject == None):
         print("Предмет = ", current_subject.Name)
