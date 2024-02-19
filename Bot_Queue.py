@@ -8,12 +8,21 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token="5973966334:AAHjG4FY4yj__zJ0NxXLFkmSVem550Hb238")
 dp = Dispatcher(bot)
 
+'''
+Структура: 
+Subjects - массив предметов
+Subject - класс (Название предмета, массив дат с очередями)
+QueueInDay - класс очередь в текущий день
+
+
+'''
+
 status = 0
-current_subject = None
+current_subject = None  
 current_date = None
 Subjects = []
-interval = 10
-lastRegistration = None
+interval = 10 #Ограничение частоты записи (в минутах)
+lastRegistration = None #Время последней регистрации
         
 class QueueInDay:
     def __init__(self, date):
@@ -30,7 +39,7 @@ class QueueInDay:
     def isEmpty(self):
         return len(self.queue) == 0
 
-    def get(self):
+    def get(self):  #Получить строку с фимилиями и порядковым номером в очереди
         s = ''
         temp = self.queue.copy()
         if self.isEmpty():
@@ -65,9 +74,9 @@ class Subject:
         return s
 
     def sort(self):
-        self.ListOfDate = sorted(self.ListOfDate, key=lambda x: datetime.strptime(x.date, "%d.%m.%Y"))
+        self.ListOfDate = sorted(self.ListOfDate, key=lambda x: datetime.strptime(x.date, "%d.%m.%Y")) #Сортируем очереди внутри предмета по дате
      
-@dp.message_handler(commands="start")
+@dp.message_handler(commands="start")  #Обработчик /start
 async def cmd_start(message: types.Message):
     global status
     global current_subject
@@ -80,7 +89,7 @@ async def cmd_start(message: types.Message):
     current_subject = None
     current_date = None
 
-@dp.message_handler(commands="админ")
+@dp.message_handler(commands="админ") #Обработчик /админ
 async def admin(message: types.Message): 
     global status
     global current_subject
@@ -95,13 +104,13 @@ async def admin(message: types.Message):
     current_subject = None
     current_date = None
 
-@dp.message_handler()
+@dp.message_handler() #Обработчик диалога
 async def dialog(message: types.Message):
     global status
     global current_subject
     global current_date
     global lastRegistration
-
+    #Кнопка "Назад" уменьшает статус на 2 (но это не всегда)
     keyboard = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True, one_time_keyboard=True)
 
     print("message =", message.text, "status =", status)
@@ -178,7 +187,7 @@ async def dialog(message: types.Message):
                 await message.answer("Очередь на " + current_subject.name + " " + current_date.date + ":")
                 await message.answer(current_date.get(), reply_markup=keyboard)
             elif message.text == "Записаться в очередь":
-                current_time = datetime.now()
+                current_time = datetime.now()  #Проверка на интервал между регистрациями
                 if lastRegistration == None or (current_time - lastRegistration >= timedelta(minutes=10)):
                     await message.answer("Ваша фамилия:")
                     status = 4
