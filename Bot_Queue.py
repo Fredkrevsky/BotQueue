@@ -2,6 +2,8 @@ import logging
 from collections import deque
 from aiogram import Bot, Dispatcher, executor, types
 from datetime import datetime, timedelta
+import sqlite3
+import os
 
 
 logging.basicConfig(level=logging.INFO)
@@ -24,11 +26,98 @@ db_path = None
 
 def load_from_db():
     global Subjects
-    return True
+
+    conn = sqlite3.connect('data.db')
+
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM subjects')
+    subjects = cursor.fetchall()
+    cursor.execute('SELECT * FROM dates')
+    dates = cursor.fetchall()
+    cursor.execute('SELECT * FROM people')
+    people = cursor.fetchall()
+    conn.close()
+
+    print(subjects)
+    print(dates)
+    print(people)
+
+    Subjects.clear()
+
+    for temp in subjects:
+        sub_ind, name = temp
+        Subjects.append(Subject(name))
+
+    for temp in dates:
+        sub_ind, date_ind, date = temp
+        Subjects[sub_ind].add_obj(QueueInDay(date))
+
+    for temp in people:
+        sub_ind, date_ind, name = temp
+        Subjects[sub_ind].ListOfDate[date_ind].add(name)
+
+    return subjects, dates, people
+
 
 def save_to_db():
     global Subjects
-    return False
+    
+    
+    to_save_subjects = []
+    to_save_dates = []
+    to_save_people = []
+    sub_ind = 0
+    date_ind = 0
+
+    for sub in Subjects:
+
+        to_save_subjects.append((sub_ind, sub.name))
+
+        for date in sub.ListOfDate:
+
+            to_save_dates.append((sub_ind, date_ind, date.date))
+            tqueue = date.queue.copy()
+
+            while len(tqueue) > 0:
+                elem = tqueue.popleft()
+                to_save_people.append((sub_ind, date_ind, elem))
+
+            date_ind += 1
+        
+        sub_ind += 1
+
+    print(to_save_subjects)
+    print(to_save_dates)
+    print(to_save_people)
+
+    conn = sqlite3.connect('data.db')
+    cursor = conn.cursor()
+    cursor.execute('DROP TABLE IF EXISTS subjects')
+    cursor.execute('DROP TABLE IF EXISTS dates')
+    cursor.execute('DROP TABLE IF EXISTS people')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS subjects (
+                   subject_id INTEGER PRIMARY KEY,
+                   subject_name TEXT)''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS dates (
+                    subject_id INTEGER,
+                    date_id INTEGER PRIMARY KEY,
+                    date_value TEXT,
+                    FOREIGN KEY(subject_id) REFERENCES subjects(subject_id))''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS people (
+                    subject_id INTEGER,
+                    date_id INTEGER,
+                    person_name TEXT,
+                    FOREIGN KEY(date_id) REFERENCES dates(date_id)
+                    FOREIGN KEY(subject_id) REFERENCES subjects(subject_id))''')
+
+    cursor.executemany('INSERT INTO subjects VALUES (?, ?)', to_save_subjects)
+    cursor.executemany('INSERT INTO dates VALUES (?, ?, ?)', to_save_dates)
+    cursor.executemany('INSERT INTO people VALUES (?, ?, ?)', to_save_people)
+    conn.commit()
+    conn.close()
         
 class QueueInDay:
     def __init__(self, date: str):
@@ -144,10 +233,11 @@ async def admin(message: types.Message):
     global current_subject
     global current_date
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True) 
+    keyboard.add(types.KeyboardButton("Загрузить данные"))
     keyboard.add(types.KeyboardButton("Редактировать предмет"))
     keyboard.add(types.KeyboardButton("Добавить предмет"))
     keyboard.add(types.KeyboardButton("Удалить предмет"))
-    keyboard.add(types.KeyboardButton("Назад"))
+    keyboard.add(types.KeyboardButton("Сохранить данные"))
     await message.answer("Добрый день, товарищ администратор", reply_markup=keyboard)  
     id = message.from_user.id
     if id in regs:
@@ -276,17 +366,15 @@ async def dialog(message: types.Message):
             status = 11
         elif status == 11:
             if message.text == "Загрузить данные":
+                load_from_db()
                 await message.answer("Данные успешно загружены")
-                '''
-                Здесь идет подключение к БД
-
-                '''
                 status = 10
                 one_more = True
             elif message.text == "Редактировать предмет":
                 if len(Subjects)>0:
                     for temp in Subjects:
-                        keyboard.add(types.KeyboardButton(temp.name))    
+                        keyboard.add(types.KeyboardButton(temp.name))
+                    keyboard.add(types.KeyboardButton("Назад"))
                     await message.answer("Выберите предмет:", reply_markup=keyboard)
                     status = 12
                 else:
@@ -308,13 +396,8 @@ async def dialog(message: types.Message):
                     status = 10
                     one_more = True
             elif message.text == "Сохранить данные":
+                save_to_db()
                 await message.answer("Данные успешно сохранены")
-
-                '''
-                Подключение к БД и сохранение
-
-                '''
-
                 status = 10
                 one_more = True
             else:
@@ -322,19 +405,23 @@ async def dialog(message: types.Message):
                 status = 10
                 one_more = True          
         elif status == 12:
-            if current_subject == None:
-                for temp in Subjects:
-                    if temp.name == message.text:
-                        current_subject = temp
-            if current_subject != None:
-                keyboard.add(types.KeyboardButton("Добавить дату"))
-                keyboard.add(types.KeyboardButton("Редактировать дату"))
-                keyboard.add(types.KeyboardButton("Удалить дату"))
-                keyboard.add(types.KeyboardButton("Назад"))
-                await message.answer("Выберите пункт меню:", reply_markup=keyboard)
-                status = 13
+            if message.text == "Назад":
+                status = 10
+                one_more = True
             else:
-                await message.answer("Вас не понял. Нажимайте на кнопки")
+                if current_subject == None:
+                    for temp in Subjects:
+                        if temp.name == message.text:
+                            current_subject = temp
+                if current_subject != None:
+                    keyboard.add(types.KeyboardButton("Добавить дату"))
+                    keyboard.add(types.KeyboardButton("Редактировать дату"))
+                    keyboard.add(types.KeyboardButton("Удалить дату"))
+                    keyboard.add(types.KeyboardButton("Назад"))
+                    await message.answer("Выберите пункт меню:", reply_markup=keyboard)
+                    status = 13
+                else:
+                    await message.answer("Вас не понял. Нажимайте на кнопки", reply_markup=keyboard)
         elif status == 13:
             if message.text == "Добавить дату":
                 await message.answer("Введите дату (дд.мм.гггг):")
@@ -475,17 +562,17 @@ async def dialog(message: types.Message):
         elif status == 31:
             if message.text == "Назад":
                 status = 12
-                one_more = True       
-            exist = False
-            for temp in Subjects:
-                if message.text == temp.name:
-                    Subjects.remove(temp)
-                    exist = True
-            if exist:
-                await message.answer("Предмет удалён")
             else:
-                await message.answer("Предмет не найден")
-            status = 10
+                exist = False
+                for temp in Subjects:
+                    if message.text == temp.name:
+                        Subjects.remove(temp)
+                        exist = True
+                if exist:
+                    await message.answer("Предмет удалён")
+                else:
+                    await message.answer("Предмет не найден")
+                status = 10
             one_more = True   
     
     struct.status = status
@@ -493,22 +580,8 @@ async def dialog(message: types.Message):
     struct.current_date = current_date
     struct.last_reg = last_reg
     struct.surname = surname
-    struct.print_data()
     regs.update({id: struct})
     if one_more:
         await dialog(message)
 
-if __name__ == "__main__":
-    Sub1 = Subject("ОАиП")
-    Subjects.append(Sub1)
-    TempQueue = QueueInDay("12.12.2012")
-    TempQueue.add("Поитов")
-    TempQueue.add("Коля")
-    TempQueue.add("Хомячим")
-    Sub1.add_obj(TempQueue)
-    Sub1.add_obj(QueueInDay("16.02.2025"))
-    Sub2 = Subject("КПО")
-    Subjects.append(Sub2)
-    Sub2.add_obj(QueueInDay("13.12.2024"))
-    Sub2.add_obj(QueueInDay("15.02.2023"))
-    executor.start_polling(dp, skip_updates=True)
+executor.start_polling(dp, skip_updates=True)
